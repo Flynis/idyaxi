@@ -1,0 +1,9 @@
+#ifndef _EXCEPTIONS_H_INCLUDED_
+#define _EXCEPTIONS_H_INCLUDED_
+
+
+#define X_FAILED -1
+#define X_AGAIN -2
+
+
+#endif // _EXCEPTIONS_H_INCLUDED_
