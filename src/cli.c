@@ -81,8 +81,6 @@ static int process_arg(const char *arg, size_t len, CliOptions *o) {
     
     default: return X_FAILED;
     }
-
-    return X_FAILED; // unreacheble
 }
 
 
@@ -142,7 +140,7 @@ int proxy_options_from_cmd_line(int argc, char **argv, ProxyOptions *options) {
         size_t len = get_option_length(arg);
         int ret = process_arg(arg, len, &o);
         if(ret == X_FAILED) {
-            puts("options: [ipv4/ipv6] [port]");
+            puts("options: [-4=<ipv4_addr>] [-6=<ipv6_addr>] [port]");
             return 0;
         }
     }
