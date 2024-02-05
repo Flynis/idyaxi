@@ -5,6 +5,8 @@
 #include <assert.h>
 #include <netinet/ip.h>
 #include <netinet/ip6.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,94 +19,111 @@
 #define DEFAULT_PORT 1080
 
 
-typedef enum ArgType {
-    CLI_IPV4 = 1,
-    CLI_IPV6,
-    CLI_PORT
-} ArgType;
+typedef struct CliOptions {
+    sa_family_t family;
+    struct in_addr ipv4;
+    struct in6_addr ipv6;
+    uint16_t port;
+} CliOptions;
 
 
-static void print_help(void) {
-    puts("options: [ipv4/ipv6] [port]");
-}
-
-
-static void print_failed(void) {
-    puts("Process cmd line args failed");
-}
-
-
-static int set_port(int port, ProxyOptions *options) {
+static int parse_port(const char *arg, CliOptions *o) {
+    int port = atoi(arg);
     if(port < 0 || port > PORT_MAX) {
-        print_help();
         return X_FAILED;
     }
-    if(options->addr == NULL) {
-        struct sockaddr_in ipv4;
-        ipv4.sin_family = AF_INET;
-        ipv4.sin_addr.s_addr = htonl(INADDR_ANY);
-        ipv4.sin_port = htons(port);
-        int ret = proxy_options_init(options, &ipv4, sizeof(ipv4));
-        if(ret == X_FAILED) {
-            print_failed();
-            return X_FAILED;
-        }
-        return 0;
-    } else {
-        if(options->addr->sa_family == AF_INET) {
-            struct sockaddr_in *addr = options->addr;
-            addr->sin_port = htons(port);
-            return 0;
-        } else if(options->addr->sa_family == AF_INET6) {
-            struct sockaddr_in6 *addr = options->addr;
-            addr->sin6_port = htons(port);
-            return 0;
-        }
-    }
-    return X_FAILED;
+    o->port = port;
+    return 0;
 }
 
 
-static int process_arg(char const *arg, ArgType arg_type, ProxyOptions *options) {
-    int ret;
-    switch (arg_type)
+static int parse_ipv4(const char *arg, CliOptions *o) {
+    o->family = AF_INET;
+    int ret = inet_pton(AF_INET, arg, &o->ipv4);
+    return (ret == 1) ? 0 : X_FAILED;
+}
+
+
+static int parse_ipv6(const char *arg, CliOptions *o) {
+    o->family = AF_INET6;
+    int ret = inet_pton(AF_INET6, arg, &o->ipv6);
+    return (ret == 1) ? 0 : X_FAILED;
+}
+
+
+static size_t get_option_length(const char *arg) {
+    if(arg[0] != '-') {
+        return 0;
+    }
+    size_t len = 0;
+    for(size_t i = 1; i < strlen(arg); i += 1) {
+        if(arg[i] == '=') {
+            break;
+        }
+        len += 1;
+    }
+    return len;
+}
+
+
+static int process_arg(const char *arg, size_t len, CliOptions *o) {
+    switch(len)
     {
-    case CLI_IPV4:
-        struct sockaddr_in ipv4;
+    case 0: return parse_port(arg, &o);
+
+    case 1:
+        switch(arg[1])
+        {
+        case '4': return parse_ipv4(arg, &o);
+        case '6': return parse_ipv4(arg, &o);
+        default: return X_FAILED;
+        }
+    
+    default: return X_FAILED;
+    }
+
+    return X_FAILED; // unreacheble
+}
+
+
+static int fill_proxy_options(CliOptions *o, ProxyOptions *options) {
+    struct sockaddr_in ipv4;
+    struct sockaddr_in6 ipv6;
+    struct sockaddr *addr;
+    socklen_t addrlen;
+
+    if(o->port == 0) {
+        o->port = DEFAULT_PORT;
+    }
+
+    switch(o->family)
+    {
+    case 0:
+        ipv4.sin_addr.s_addr = htonl(INADDR_ANY);
+        // fall through
+
+    case AF_INET:
+        if(o->family == AF_INET) {
+            ipv4.sin_addr = o->ipv4;
+        }
         ipv4.sin_family = AF_INET;
-        ret = inet_pton(AF_INET, arg, &ipv4.sin_addr);
-        if(ret == 0) {
-            print_help();
-            return X_FAILED;
-        }
-        ret = proxy_options_init(options, &ipv4, sizeof(ipv4));
-        if(ret == X_FAILED) {
-            print_failed();
-            return X_FAILED;
-        }
-        return 0;
+        ipv4.sin_port = htons(o->port);
+        addr = &ipv4;
+        addrlen = sizeof(struct sockaddr_in);
+        break;
 
-    case CLI_IPV6:
-        struct sockaddr_in6 ipv6;
+    case AF_INET6:
         ipv6.sin6_family = AF_INET6;
-        ret = inet_pton(AF_INET6, arg, &ipv6.sin6_addr);
-        if(ret == 0) {
-            print_help();
-            return X_FAILED;
-        }
-        ret = proxy_options_init(options, &ipv6, sizeof(ipv6));
-        if(ret == X_FAILED) {
-            print_failed();
-            return X_FAILED;
-        }
-        return 0;
-
-    case CLI_PORT:
-        int port = atoi(arg);
-        return set_port(port, options);
+        ipv6.sin6_addr = o->ipv6;
+        ipv6.sin6_port = htons(o->port);
+        addr = &ipv6;
+        addrlen = sizeof(struct sockaddr_in6);
+        break;
 
     default: return X_FAILED;
     }
+
+    return proxy_options_init(options, addr, addrlen);
 }
 
 
@@ -113,33 +132,19 @@ int proxy_options_from_cmd_line(int argc, char **argv, ProxyOptions *options) {
     assert(argv != NULL);
     assert(options != NULL);
 
-    options->addr = NULL;
-    options->addrlen = 0;
-    int ret = 0;
+    CliOptions o = {
+        .family = 0,
+        .port = 0
+    };
 
-    if(argc > 1) {
-        ArgType type = CLI_PORT;
-        for(int i = 0; i < strlen(argv[1]); i++) {
-            if(argv[1] == '.') {
-                type = CLI_IPV4;
-                break;
-            }
-            if(argv[1] == ':') {
-                type = CLI_IPV6;
-                break;
-            }
-        }
-        ret = process_arg(argv[1], type, options);
+    for(int i = 1; i < argc; i += 1) {
+        char *arg = argv[i];
+        size_t len = get_option_length(arg);
+        int ret = process_arg(arg, len, &o);
         if(ret == X_FAILED) {
-            return X_FAILED;
-        }
-        if(type == CLI_PORT) {
+            puts("options: [ipv4/ipv6] [port]");
             return 0;
         }
-        if(argc > 2) {
-            return process_arg(argv[2], CLI_PORT, options);
-        }
     }
-
-    return set_port(DEFAULT_PORT, options);
+    return fill_proxy_options(&o, options);
 }

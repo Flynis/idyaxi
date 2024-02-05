@@ -11,6 +11,7 @@ int main(int argc, char const **argv) {
     ProxyOptions options;
     int ret = proxy_options_from_cmd_line(argc, argv, &options);
     if(ret == X_FAILED) {
+        puts("Failed to proccess cmd line args");
         return EXIT_FAILURE;
     }
 
