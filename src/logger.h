@@ -10,17 +10,31 @@
 #define DEFAULT_MAX_FILE_SIZE 1048576L // 1 mb
 
 
-#define __FILENAME__ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-#define log_debug(fmt, ...) logger_log(LogLevel_DEBUG, __FILENAME__, __LINE__, fmt, ##__VA_ARGS__)
-#define log_info(fmt, ...)  logger_log(LogLevel_INFO , __FILENAME__, __LINE__, fmt, ##__VA_ARGS__)
-#define log_error(fmt, ...) logger_log(LogLevel_ERROR, __FILENAME__, __LINE__, fmt, ##__VA_ARGS__)
+#define LOG_DEBUG 1
+#define LOG_INFO 2
+#define LOG_ERROR 3
+#define LOG_LEVEL LOG_DEBUG
 
 
-typedef enum LogLevel {
-    LogLevel_DEBUG,
-    LogLevel_INFO,
-    LogLevel_ERROR,
-} LogLevel;
+#if (LOG_LEVEL <= LOG_DEBUG)
+#define log_debug(fmt, ...) logger_log('D', fmt, ##__VA_ARGS__)
+#else 
+#define log_debug(fmt, ...) do {} while(0)
+#endif    
+
+
+#if (LOG_LEVEL <= LOG_INFO)
+#define log_info(fmt, ...) logger_log('I', fmt, ##__VA_ARGS__)
+#else 
+#define log_info(fmt, ...) do {} while(0)
+#endif 
+
+
+#if (LOG_LEVEL <= LOG_ERROR)
+#define log_error(fmt, ...) logger_log('E', fmt, ##__VA_ARGS__)
+#else 
+#define log_error(fmt, ...) do {} while(0)
+#endif 
 
 
 /**
@@ -47,23 +61,6 @@ void logger_destroy_filelog();
 
 
 /**
- * Sets the log level.
- * Message levels lower than this value will be discarded.
- * The default log level is INFO.
- * @param level a log level.
- */
-void logger_set_level(LogLevel level);
-
-
-/**
- * Gets the log level that has been set.
- * The default log level is INFO.
- * @returns the log level.
- */
-LogLevel logger_get_level(void);
-
-
-/**
  * Flush automatically.
  * Auto flush is off in default.
  * @param interval A fulsh interval in milliseconds. Switch off if 0 or a negative integer.
@@ -82,13 +79,9 @@ void logger_flush(void);
  * Make sure to call one of the following initialize functions before starting logging.
  * - logger_initConsoleLogger()
  * - logger_initFileLogger()
- *
- * @param level A log level.
- * @param file A file name string.
- * @param line A line number.
  * @param fmt A format string.
  */
-void logger_log(LogLevel level, const char *file, int line, const char *fmt, ...);
+void logger_log(char levelch, const char *fmt, ...);
 
 
 #endif // _LOGGER_H_INCLUDED_
