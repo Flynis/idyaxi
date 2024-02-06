@@ -10,6 +10,7 @@
 */
 typedef struct Proxy {
     int listen_sock;
+    int dns_sock;
 } Proxy;
 
 
